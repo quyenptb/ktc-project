@@ -1,0 +1,26 @@
+# === Dự án hiện tại (Các file chạy thử nghiệm & log) ===
+check_gemini_models.py
+export_project.py
+test_jira_api.py
+project_content.txt
+
+# === Python / Môi trường ảo (Virtual Environment) ===
+.venv/
+venv/
+ENV/
+env/
+
+# === Bộ nhớ đệm (Python cache) ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# === Cấu hình môi trường (Bảo mật thông tin API Token) ===
+.env
+.env.local
+
+# === Hệ điều hành (File rác hệ thống) ===
+.DS_Store
+Thumbs.db
