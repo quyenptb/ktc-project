@@ -1,18 +1,22 @@
 import os
 import json
 import time
+import logging
 import requests
+
+# Khởi tạo cấu hình logging chuẩn để đẩy log trực tiếp lên Render không qua buffer
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("LLMHandler")
 
 class LLMHandler:
     """
-    Xử lý gọi mô hình ngôn ngữ lớn (gemini-2.0-flash-lite) bằng API trực tiếp.
-    Đã đổi model_name sang 'gemini-2.0-flash-lite' để sửa triệt để lỗi 404 NotFound trên API Key cá nhân.
-    Cam kết trả về định dạng JSON nghiêm ngặt nhờ tính năng responseSchema của Google.
-    Tích hợp cơ chế thử lại lũy thừa (Exponential Backoff) chống nghẽn mạng lúc demo.
+    Xử lý gọi mô hình ngôn ngữ lớn (gemini-3-flash-preview) bằng API trực tiếp.
+    Sử dụng logging hệ thống thay thế print() để hiển thị log tức thì trên Render.
+    Tích hợp cơ chế thử lại lũy thừa (Exponential Backoff) khi gặp lỗi mạng.
     """
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY", "")
-        # Đổi sang model Stable để tương thích với tất cả API Key Google AI Studio
+        # Giữ nguyên cấu hình model theo xác nhận của cậu
         self.model_name = "gemini-3-flash-preview"
         self.endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
 
@@ -28,6 +32,7 @@ class LLMHandler:
 
     def generate_response(self, user_query: str, retrieved_context: list[dict]) -> dict:
         if not self.api_key:
+            logger.warning("⚠️ Chưa cấu hình LLM_API_KEY trong biến môi trường!")
             return {
                 "response_vi": "Chào cậu, hiện tại hệ thống AI của sếp đang bảo trì do thiếu API Key. Cậu vui lòng liên hệ HR hỗ trợ nhé!",
                 "korean_terms_explained": {},
@@ -82,26 +87,32 @@ class LLMHandler:
         delay = 1.0
         for attempt in range(5):
             try:
+                logger.info(f"🔑 Đang gửi yêu cầu tới Gemini API ({self.model_name}) - Lần thử {attempt + 1}...")
                 response = requests.post(self.endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+                
                 if response.status_code == 200:
                     result = response.json()
                     raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+                    logger.info("✅ Nhận phản hồi thành công từ Gemini API!")
                     return json.loads(raw_text)
                 
-                # Nếu dính lỗi Rate Limit (429) hoặc Server Error (5xx)
+                # Ghi nhận log lỗi chi tiết ngay lập tức lên bảng điều khiển Render
+                logger.error(f"❌ Gemini API trả về lỗi HTTP {response.status_code}: {response.text}")
+                
+                # Nếu dính lỗi giới hạn lượt gọi (429) hoặc lỗi máy chủ (5xx) thì ngủ và thử lại
                 if response.status_code in [429, 500, 502, 503, 504]:
                     time.sleep(delay)
                     delay *= 2
                     continue
                 else:
-                    # In mã lỗi để debug chi tiết nếu không phải lỗi mạng thông thường
-                    print(f"[LLM Handler] Gemini API trả về lỗi HTTP {response.status_code}: {response.text}")
                     break
             except Exception as e:
+                logger.error(f"❌ Lỗi kết nối vật lý tới Gemini API: {str(e)}")
                 time.sleep(delay)
                 delay *= 2
 
         # Fallback an toàn nếu toàn bộ API thất bại
+        logger.warning("⚠️ Kích hoạt chế độ Fallback Response cho sếp Park.")
         return {
             "response_vi": "Ne, sếp đang bận xử lý một số cuộc họp khẩn cấp. Cậu hỏi lại sau vài giây nữa nhé, hoặc kiểm tra lại kết nối mạng nha!",
             "korean_terms_explained": {"Ne": "Vâng, ừ"},
